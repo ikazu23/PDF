@@ -455,7 +455,7 @@
       <span class="result-stats" id="resultStats"></span>
     </div>
     <div class="result-actions">
-      <button class="action-btn" id="copyBtn">📋 コピー</button>
+      <button class="action-btn" onclick="copyOutput()">📋 コピー</button>
       <button class="action-btn" id="downloadBtn">💾 TXTでダウンロード</button>
       <button class="action-btn" id="clearBtn">✕ クリア</button>
     </div>
@@ -485,7 +485,6 @@
   const resultArea = document.getElementById('resultArea');
   const resultText = document.getElementById('resultText');
   const resultStats = document.getElementById('resultStats');
-  const copyBtn = document.getElementById('copyBtn');
   const downloadBtn = document.getElementById('downloadBtn');
   const clearBtn = document.getElementById('clearBtn');
   const toast = document.getElementById('toast');
@@ -593,25 +592,45 @@
   });
 
   // コピー
-  copyBtn.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(resultText.value);
-      showToast('✓ コピーしました');
-    } catch (err) {
-      const ta = document.createElement('textarea');
-      ta.value = resultText.value;
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      try {
-        document.execCommand('copy');
-        showToast('✓ コピーしました');
-      } catch {
-        showToast('コピー失敗');
-      }
-      document.body.removeChild(ta);
+  function copyOutput() {
+    if (!resultText.value) {
+      showToast('コピーする内容がありません');
+      return;
     }
-  });
+
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(resultText.value)
+        .then(() => showToast('コピーしました'))
+        .catch(err => {
+          console.warn('clipboard API failed, falling back:', err);
+          fallbackCopy(resultText);
+        });
+    } else {
+      fallbackCopy(resultText);
+    }
+  }
+
+  function fallbackCopy(textarea) {
+    try {
+      const wasReadonly = textarea.hasAttribute('readonly');
+      textarea.removeAttribute('readonly');
+      textarea.focus();
+      textarea.select();
+      textarea.setSelectionRange(0, textarea.value.length);
+
+      const ok = document.execCommand('copy');
+      if (wasReadonly) textarea.setAttribute('readonly', '');
+
+      if (ok) {
+        showToast('コピーしました');
+      } else {
+        showToast('コピー失敗 — 手動でCtrl+Cしてください');
+      }
+    } catch (e) {
+      console.error('fallback copy failed:', e);
+      showToast('コピー失敗 — 手動でCtrl+Cしてください');
+    }
+  }
 
   // ダウンロード
   downloadBtn.addEventListener('click', () => {
