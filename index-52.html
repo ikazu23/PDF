@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF テキスト抽出</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;800&family=DM+Mono:wght@300;400&display=swap');
+
+  :root {
+    --ink: #1a1209;
+    --paper: #f5f0e8;
+    --aged: #e8dfc8;
+    --rust: #8b3a1e;
+    --gold: #c9922a;
+    --shadow: rgba(26,18,9,0.15);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Shippori Mincho', serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 48px 16px 64px;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* 背景テクスチャ */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 31px, rgba(139,58,30,0.04) 31px, rgba(139,58,30,0.04) 32px),
+      repeating-linear-gradient(90deg, transparent, transparent 31px, rgba(139,58,30,0.03) 31px, rgba(139,58,30,0.03) 32px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 740px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ヘッダー */
+  header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  .header-rule {
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(to right, transparent, var(--rust), var(--gold), var(--rust), transparent);
+    margin-bottom: 24px;
+  }
+
+  h1 {
+    font-size: clamp(1.6rem, 5vw, 2.4rem);
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    color: var(--rust);
+    line-height: 1.3;
+  }
+
+  .subtitle {
+    font-size: 0.85rem;
+    color: var(--gold);
+    letter-spacing: 0.2em;
+    margin-top: 8px;
+    font-weight: 400;
+  }
+
+  /* ドロップゾーン */
+  .drop-zone {
+    border: 2px dashed var(--gold);
+    border-radius: 4px;
+    padding: 56px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    background: rgba(201,146,42,0.04);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .drop-zone::before {
+    content: '';
+    position: absolute;
+    inset: 6px;
+    border: 1px solid rgba(201,146,42,0.2);
+    border-radius: 2px;
+    pointer-events: none;
+  }
+
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--rust);
+    background: rgba(139,58,30,0.05);
+  }
+
+  .drop-zone.drag-over {
+    transform: scale(1.01);
+  }
+
+  .drop-icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+    opacity: 0.6;
+    display: block;
+    animation: float 3s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+
+  .drop-text {
+    font-size: 1.1rem;
+    color: var(--ink);
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+  }
+
+  .drop-sub {
+    font-size: 0.8rem;
+    color: var(--gold);
+    letter-spacing: 0.1em;
+    font-family: 'DM Mono', monospace;
+  }
+
+  #fileInput { display: none; }
+
+  /* ファイル情報 */
+  .file-info {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    background: var(--aged);
+    border-left: 3px solid var(--rust);
+    margin-top: 16px;
+    font-size: 0.9rem;
+  }
+
+  .file-info.visible { display: flex; }
+
+  .file-name {
+    flex: 1;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.82rem;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .file-size {
+    color: var(--gold);
+    font-size: 0.78rem;
+    font-family: 'DM Mono', monospace;
+    white-space: nowrap;
+  }
+
+  /* オプション */
+  .options {
+    display: flex;
+    gap: 16px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+
+  .option-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    padding: 8px 16px;
+    border: 1px solid var(--aged);
+    border-radius: 2px;
+    transition: all 0.2s;
+  }
+
+  .option-label:hover { border-color: var(--gold); }
+
+  .option-label input[type="checkbox"] {
+    accent-color: var(--rust);
+    width: 14px;
+    height: 14px;
+  }
+
+  /* 抽出ボタン */
+  .extract-btn {
+    width: 100%;
+    margin-top: 24px;
+    padding: 18px;
+    background: var(--rust);
+    color: var(--paper);
+    border: none;
+    border-radius: 2px;
+    font-family: 'Shippori Mincho', serif;
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .extract-btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to bottom, rgba(255,255,255,0.08), transparent);
+    pointer-events: none;
+  }
+
+  .extract-btn:hover:not(:disabled) {
+    background: #a04522;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(139,58,30,0.3);
+  }
+
+  .extract-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* プログレス */
+  .progress-wrap {
+    display: none;
+    margin-top: 20px;
+  }
+
+  .progress-wrap.visible { display: block; }
+
+  .progress-label {
+    font-size: 0.82rem;
+    color: var(--gold);
+    letter-spacing: 0.1em;
+    font-family: 'DM Mono', monospace;
+    margin-bottom: 8px;
+  }
+
+  .progress-bar-bg {
+    height: 4px;
+    background: var(--aged);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(to right, var(--rust), var(--gold));
+    border-radius: 2px;
+    transition: width 0.2s ease;
+    width: 0%;
+  }
+
+  /* 結果エリア */
+  .result-area {
+    display: none;
+    margin-top: 32px;
+    animation: fadeIn 0.4s ease;
+  }
+
+  .result-area.visible { display: block; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--gold);
+  }
+
+  .result-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    color: var(--rust);
+  }
+
+  .result-stats {
+    font-size: 0.75rem;
+    color: var(--gold);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .result-actions {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .action-btn {
+    flex: 1;
+    padding: 10px;
+    background: transparent;
+    border: 1px solid var(--gold);
+    border-radius: 2px;
+    color: var(--ink);
+    font-family: 'Shippori Mincho', serif;
+    font-size: 0.82rem;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .action-btn:hover {
+    background: var(--gold);
+    color: var(--paper);
+  }
+
+  .result-text {
+    width: 100%;
+    min-height: 320px;
+    max-height: 60vh;
+    padding: 20px;
+    background: var(--aged);
+    border: 1px solid rgba(201,146,42,0.3);
+    border-radius: 2px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.82rem;
+    line-height: 1.8;
+    color: var(--ink);
+    resize: vertical;
+    white-space: pre-wrap;
+    overflow-y: auto;
+  }
+
+  /* エラー */
+  .error-msg {
+    display: none;
+    margin-top: 16px;
+    padding: 12px 18px;
+    background: rgba(139,58,30,0.08);
+    border-left: 3px solid var(--rust);
+    font-size: 0.85rem;
+    color: var(--rust);
+    letter-spacing: 0.05em;
+  }
+
+  .error-msg.visible { display: block; }
+
+  /* 区切り線 */
+  .divider {
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--gold), transparent);
+    margin: 32px 0;
+  }
+
+  /* コピー完了トースト */
+  .toast {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--ink);
+    color: var(--paper);
+    padding: 10px 24px;
+    border-radius: 2px;
+    font-size: 0.82rem;
+    letter-spacing: 0.1em;
+    opacity: 0;
+    transition: all 0.3s ease;
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="header-rule"></div>
+    <h1>PDF テキスト抽出</h1>
+    <p class="subtitle">PORTABLE DOCUMENT FORMAT → PLAIN TEXT</p>
+    <div class="header-rule" style="margin-top:20px; margin-bottom:0;"></div>
+  </header>
+
+  <!-- ドロップゾーン -->
+  <div class="drop-zone" id="dropZone">
+    <span class="drop-icon">📄</span>
+    <p class="drop-text">PDFをドラッグ＆ドロップ</p>
+    <p class="drop-sub">または クリックしてファイルを選択</p>
+    <input type="file" id="fileInput" accept=".pdf">
+  </div>
+
+  <!-- ファイル情報 -->
+  <div class="file-info" id="fileInfo">
+    <span>📎</span>
+    <span class="file-name" id="fileName">—</span>
+    <span class="file-size" id="fileSize">—</span>
+  </div>
+
+  <!-- オプション -->
+  <div class="options">
+    <label class="option-label">
+      <input type="checkbox" id="optPageBreak" checked>
+      ページ区切りを挿入
+    </label>
+    <label class="option-label">
+      <input type="checkbox" id="optTrimLines">
+      空白行を削除
+    </label>
+    <label class="option-label">
+      <input type="checkbox" id="optPageNum">
+      ページ番号を表示
+    </label>
+  </div>
+
+  <!-- 抽出ボタン -->
+  <button class="extract-btn" id="extractBtn" disabled>テキストを抽出</button>
+
+  <!-- プログレス -->
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-label" id="progressLabel">処理中... 0 / 0 ページ</div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progressFill"></div>
+    </div>
+  </div>
+
+  <!-- エラー -->
+  <div class="error-msg" id="errorMsg"></div>
+
+  <!-- 結果 -->
+  <div class="result-area" id="resultArea">
+    <div class="divider"></div>
+    <div class="result-header">
+      <span class="result-title">抽出結果</span>
+      <span class="result-stats" id="resultStats"></span>
+    </div>
+    <div class="result-actions">
+      <button class="action-btn" id="copyBtn">📋 コピー</button>
+      <button class="action-btn" id="downloadBtn">💾 TXTでダウンロード</button>
+      <button class="action-btn" id="clearBtn">✕ クリア</button>
+    </div>
+    <textarea class="result-text" id="resultText" readonly></textarea>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // PDF.js worker
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  let currentFile = null;
+
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const fileInfo = document.getElementById('fileInfo');
+  const fileName = document.getElementById('fileName');
+  const fileSize = document.getElementById('fileSize');
+  const extractBtn = document.getElementById('extractBtn');
+  const progressWrap = document.getElementById('progressWrap');
+  const progressLabel = document.getElementById('progressLabel');
+  const progressFill = document.getElementById('progressFill');
+  const errorMsg = document.getElementById('errorMsg');
+  const resultArea = document.getElementById('resultArea');
+  const resultText = document.getElementById('resultText');
+  const resultStats = document.getElementById('resultStats');
+  const copyBtn = document.getElementById('copyBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const toast = document.getElementById('toast');
+
+  // ドロップゾーン
+  dropZone.addEventListener('click', () => fileInput.click());
+
+  dropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('drag-over');
+  });
+
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type === 'application/pdf') loadFile(file);
+    else showError('PDFファイルを選択してください。');
+  });
+
+  fileInput.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (file) loadFile(file);
+  });
+
+  function loadFile(file) {
+    currentFile = file;
+    fileName.textContent = file.name;
+    fileSize.textContent = formatSize(file.size);
+    fileInfo.classList.add('visible');
+    extractBtn.disabled = false;
+    errorMsg.classList.remove('visible');
+    resultArea.classList.remove('visible');
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  // 抽出処理
+  extractBtn.addEventListener('click', async () => {
+    if (!currentFile) return;
+
+    extractBtn.disabled = true;
+    errorMsg.classList.remove('visible');
+    resultArea.classList.remove('visible');
+    progressWrap.classList.add('visible');
+
+    const optPageBreak = document.getElementById('optPageBreak').checked;
+    const optTrimLines = document.getElementById('optTrimLines').checked;
+    const optPageNum = document.getElementById('optPageNum').checked;
+
+    try {
+      const arrayBuffer = await currentFile.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const totalPages = pdf.numPages;
+      let fullText = '';
+
+      for (let i = 1; i <= totalPages; i++) {
+        progressLabel.textContent = `処理中... ${i} / ${totalPages} ページ`;
+        progressFill.style.width = `${(i / totalPages) * 100}%`;
+
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        let pageText = content.items.map(item => item.str).join(' ');
+
+        if (optTrimLines) {
+          pageText = pageText.replace(/\n{3,}/g, '\n\n').trim();
+        }
+
+        if (optPageNum) {
+          fullText += `\n\n【 ${i} / ${totalPages} ページ 】\n`;
+        }
+
+        fullText += pageText;
+
+        if (optPageBreak && i < totalPages) {
+          fullText += '\n\n' + '─'.repeat(40) + '\n\n';
+        }
+      }
+
+      progressWrap.classList.remove('visible');
+      progressFill.style.width = '0%';
+
+      const charCount = fullText.replace(/\s/g, '').length;
+      const lineCount = fullText.split('\n').length;
+
+      resultText.value = fullText.trim();
+      resultStats.textContent = `${totalPages}ページ ／ ${lineCount.toLocaleString()}行 ／ ${charCount.toLocaleString()}文字`;
+      resultArea.classList.add('visible');
+
+    } catch (err) {
+      progressWrap.classList.remove('visible');
+      showError('抽出に失敗しました。テキストレイヤーのないPDF（スキャン画像）は処理できません。');
+      console.error(err);
+    }
+
+    extractBtn.disabled = false;
+  });
+
+  // コピー
+  copyBtn.addEventListener('click', () => {
+    const text = resultText.value;
+    if (!text) return;
+
+    // ユーザージェスチャー内で直接 Clipboard API を呼ぶ（async/await不使用）
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        showToast('クリップボードにコピーしました');
+      }).catch(() => {
+        fallbackCopy(text);
+      });
+    } else {
+      fallbackCopy(text);
+    }
+  });
+
+  function fallbackCopy(text) {
+    // file:// など Clipboard API が使えない環境向け
+    // テキストエリアを選択状態にしてユーザーに手動コピーを促す
+    resultText.removeAttribute('readonly');
+    resultText.focus();
+    resultText.select();
+    resultText.setSelectionRange(0, text.length);
+    resultText.setAttribute('readonly', '');
+    showToast('全選択しました — Ctrl+C / 長押し→コピー してください');
+  }
+
+  // ダウンロード
+  downloadBtn.addEventListener('click', () => {
+    const blob = new Blob([resultText.value], { type: 'text/plain; charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const baseName = currentFile ? currentFile.name.replace(/\.pdf$/i, '') : 'extracted';
+    a.download = baseName + '_text.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // クリア
+  clearBtn.addEventListener('click', () => {
+    resultArea.classList.remove('visible');
+    resultText.value = '';
+    currentFile = null;
+    fileInfo.classList.remove('visible');
+    extractBtn.disabled = true;
+    fileInput.value = '';
+  });
+
+  function showError(msg) {
+    errorMsg.textContent = msg;
+    errorMsg.classList.add('visible');
+  }
+
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2200);
+  }
+</script>
+</body>
+</html>
