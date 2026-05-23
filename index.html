@@ -593,46 +593,25 @@
   });
 
   // コピー
-  copyBtn.addEventListener('click', () => {
-    console.log('copy clicked, value length:', resultText.value.length, 'isSecureContext:', window.isSecureContext, 'clipboard:', !!navigator.clipboard);
-    if (!resultText.value) {
-      showToast('コピーする内容がありません');
-      return;
-    }
-
-    if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(resultText.value)
-        .then(() => showToast('✓ コピーしました'))
-        .catch(err => {
-          console.warn('clipboard API failed, falling back:', err);
-          fallbackCopy(resultText);
-        });
-    } else {
-      fallbackCopy(resultText);
+  copyBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(resultText.value);
+      showToast('✓ コピーしました');
+    } catch (err) {
+      const ta = document.createElement('textarea');
+      ta.value = resultText.value;
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try {
+        document.execCommand('copy');
+        showToast('✓ コピーしました');
+      } catch {
+        showToast('コピー失敗');
+      }
+      document.body.removeChild(ta);
     }
   });
-
-  function fallbackCopy(textarea) {
-    try {
-      const wasReadonly = textarea.hasAttribute('readonly');
-      textarea.removeAttribute('readonly');
-      textarea.focus();
-      textarea.select();
-      textarea.setSelectionRange(0, textarea.value.length);
-
-      const ok = document.execCommand('copy');
-      if (wasReadonly) textarea.setAttribute('readonly', '');
-
-      if (ok) {
-        showToast('✓ コピーしました');
-      } else {
-        showToast('コピー失敗 — 手動でCtrl+Cしてください');
-      }
-    } catch (e) {
-      console.error('fallback copy failed:', e);
-      showToast('コピー失敗 — 手動でCtrl+Cしてください');
-    }
-  }
 
   // ダウンロード
   downloadBtn.addEventListener('click', () => {
