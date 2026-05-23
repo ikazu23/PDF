@@ -459,7 +459,7 @@
       <button class="action-btn" id="downloadBtn">💾 TXTでダウンロード</button>
       <button class="action-btn" id="clearBtn">✕ クリア</button>
     </div>
-    <textarea class="result-text" id="resultText" readonly></textarea>
+    <textarea class="result-text" id="resultText"></textarea>
   </div>
 </div>
 
@@ -597,27 +597,19 @@
     const text = resultText.value;
     if (!text) return;
 
-    // ユーザージェスチャー内で直接 Clipboard API を呼ぶ（async/await不使用）
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(() => {
-        showToast('クリップボードにコピーしました');
-      }).catch(() => {
-        fallbackCopy(text);
-      });
+        showToast('✓ コピーしました');
+      }).catch(() => selectAll(text));
     } else {
-      fallbackCopy(text);
+      selectAll(text);
     }
   });
 
-  function fallbackCopy(text) {
-    // file:// など Clipboard API が使えない環境向け
-    // テキストエリアを選択状態にしてユーザーに手動コピーを促す
-    resultText.removeAttribute('readonly');
+  function selectAll(text) {
     resultText.focus();
-    resultText.select();
     resultText.setSelectionRange(0, text.length);
-    resultText.setAttribute('readonly', '');
-    showToast('全選択しました — Ctrl+C / 長押し→コピー してください');
+    showToast('全選択しました — 長押し→コピー してください');
   }
 
   // ダウンロード
