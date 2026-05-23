@@ -459,11 +459,11 @@
       <button class="action-btn" id="downloadBtn">💾 TXTでダウンロード</button>
       <button class="action-btn" id="clearBtn">✕ クリア</button>
     </div>
-    <textarea class="result-text" id="resultText"></textarea>
+    <textarea class="result-text" id="resultText" readonly></textarea>
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast">コピーしました</div>
 
 <script>
   // PDF.js worker
@@ -594,6 +594,7 @@
 
   // コピー
   copyBtn.addEventListener('click', () => {
+    console.log('copy clicked, value length:', resultText.value.length, 'isSecureContext:', window.isSecureContext, 'clipboard:', !!navigator.clipboard);
     if (!resultText.value) {
       showToast('コピーする内容がありません');
       return;
@@ -661,9 +662,10 @@
   }
 
   function showToast(msg) {
-    toast.textContent = msg;
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 2200);
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 1800);
   }
 </script>
 </body>
