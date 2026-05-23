@@ -555,7 +555,24 @@
 
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        let pageText = content.items.map(item => item.str).join(' ');
+        // アイテム間のスペース挿入を制御しながら結合
+        let pageText = '';
+        for (let j = 0; j < content.items.length; j++) {
+          const item = content.items[j];
+          const str = item.str;
+          if (!str) continue;
+          if (j === 0) { pageText += str; continue; }
+          const prev = content.items[j - 1].str;
+          const lastChar = prev.slice(-1);
+          const firstChar = str[0];
+          // 前後どちらかがASCII英数字ならスペースを入れる、それ以外は入れない
+          const needSpace = /[a-zA-Z0-9]/.test(lastChar) || /[a-zA-Z0-9]/.test(firstChar);
+          pageText += (needSpace ? ' ' : '') + str;
+        }
+        // 残った余分スペースを除去（全角文字の間）
+        pageText = pageText
+          .replace(/([^ -]) ([^ -])/g, '$1$2')
+          .replace(/([^ -]) ([^ -])/g, '$1$2'); // 2回で隣接スペースを全消し
 
         if (optTrimLines) {
           pageText = pageText.replace(/\n{3,}/g, '\n\n').trim();
@@ -634,7 +651,8 @@
 
   // ダウンロード
   downloadBtn.addEventListener('click', () => {
-    const blob = new Blob([resultText.value], { type: 'text/plain; charset=utf-8' });
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    const blob = new Blob([bom, resultText.value], { type: 'text/plain; charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
