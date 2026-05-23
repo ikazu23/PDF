@@ -531,7 +531,123 @@
   }
 
   // 抽出処理
-  extractBtn.addEventListener('click', async () => {
+
+  // 構造化テキスト抽出関数
+  function extractStructuredText(items) {
+    if (!items || items.length === 0) return '';
+
+    // 各アイテムのテキストと座標を取得
+    const tokens = items
+      .map(item => ({
+        str: item.str,
+        x: item.transform ? item.transform[4] : 0,
+        y: item.transform ? item.transform[5] : 0,
+        w: item.width || 0,
+        h: item.height || 0,
+      }))
+      .filter(t => t.str.trim().length > 0);
+
+    if (tokens.length === 0) return '';
+
+    // 縦書き判定：Y座標の分散が大きければ縦書き
+    const ys = tokens.map(t => t.y);
+    const yRange = Math.max(...ys) - Math.min(...ys);
+    const xs = tokens.map(t => t.x);
+    const xRange = Math.max(...xs) - Math.min(...xs);
+    const isVertical = yRange > xRange * 0.5 && tokens.length > 10;
+
+    let lines = [];
+
+    if (isVertical) {
+      // 縦書き：X座標でグループ化（列）、同列内はY降順
+      const colThresh = 15;
+      const cols = [];
+      for (const t of tokens) {
+        let found = false;
+        for (const col of cols) {
+          if (Math.abs(col.x - t.x) < colThresh) {
+            col.tokens.push(t);
+            col.x = (col.x + t.x) / 2;
+            found = true;
+            break;
+          }
+        }
+        if (!found) cols.push({ x: t.x, tokens: [t] });
+      }
+      // 縦書きは右から左へ（X降順）
+      cols.sort((a, b) => b.x - a.x);
+      for (const col of cols) {
+        col.tokens.sort((a, b) => b.y - a.y);
+        lines.push(col.tokens.map(t => t.str).join(''));
+      }
+    } else {
+      // 横書き：Y座標でグループ化（行）、同行内はX昇順
+      const lineThresh = 8;
+      const lineGroups = [];
+      for (const t of tokens) {
+        let found = false;
+        for (const lg of lineGroups) {
+          if (Math.abs(lg.y - t.y) < lineThresh) {
+            lg.tokens.push(t);
+            lg.y = (lg.y + t.y) / 2;
+            found = true;
+            break;
+          }
+        }
+        if (!found) lineGroups.push({ y: t.y, tokens: [t] });
+      }
+      lineGroups.sort((a, b) => b.y - a.y);
+      for (const lg of lineGroups) {
+        lg.tokens.sort((a, b) => a.x - b.x);
+        lines.push(lg.tokens.map(t => t.str).join(''));
+      }
+    }
+
+    // 行を結合して段落を復元
+    return buildParagraphs(lines);
+  }
+
+  function buildParagraphs(lines) {
+    if (lines.length === 0) return '';
+
+    const result = [];
+    let para = '';
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      // セリフ開始（「）は前に改行
+      const startsDialogue = /^[「『【〔〈《]/.test(line);
+      // セリフ終了（」）は後ろに改行
+      const endsDialogue = /[」』】〕〉》]$/.test(line);
+      // 字下げ段落（段落の先頭は空白or全角スペース）の判定
+      const isIndented = /^[　\s]/.test(lines[i]);
+
+      if (startsDialogue && para) {
+        result.push(para);
+        para = '';
+      }
+
+      if (isIndented || startsDialogue) {
+        if (para) { result.push(para); para = ''; }
+        para = line;
+      } else {
+        para += line;
+      }
+
+      if (endsDialogue) {
+        result.push(para);
+        para = '';
+      }
+    }
+
+    if (para) result.push(para);
+
+    return result.join('\n');
+  }
+
+    extractBtn.addEventListener('click', async () => {
     if (!currentFile) return;
 
     extractBtn.disabled = true;
@@ -555,25 +671,9 @@
 
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        // アイテム間のスペース挿入を制御しながら結合
-        let pageText = '';
-        for (let j = 0; j < content.items.length; j++) {
-          const item = content.items[j];
-          const str = item.str;
-          if (!str) continue;
-          if (j === 0) { pageText += str; continue; }
-          const prev = content.items[j - 1].str;
-          const lastChar = prev.slice(-1);
-          const firstChar = str[0];
-          // 前後どちらかがASCII英数字ならスペースを入れる、それ以外は入れない
-          const needSpace = /[a-zA-Z0-9]/.test(lastChar) || /[a-zA-Z0-9]/.test(firstChar);
-          pageText += (needSpace ? ' ' : '') + str;
-        }
-        // 残った余分スペースを除去（全角文字の間）
-        // \u0000-\u007F = ASCII範囲外 = 日本語・韓国語等
-        pageText = pageText
-          .replace(/([\u0080-\uFFFF]) ([\u0080-\uFFFF])/g, '$1$2')
-          .replace(/([\u0080-\uFFFF]) ([\u0080-\uFFFF])/g, '$1$2');
+        // 縦書き・横書き対応テキスト抽出
+        const items = content.items;
+        let pageText = extractStructuredText(items);
 
         if (optTrimLines) {
           pageText = pageText.replace(/\n{3,}/g, '\n\n').trim();
