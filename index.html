@@ -531,39 +531,7 @@
   }
 
   // 抽出処理
-
-  // 構造化テキスト抽出関数
-  function restoreParagraphs(text) {
-    // 余分なスペースを除去（全角文字間）
-    text = text.replace(/([-￿]) ([-￿])/g, '$1$2');
-    text = text.replace(/([-￿]) ([-￿])/g, '$1$2');
-
-    // セリフ開始記号の前に改行を入れる
-    const openDialogue = /([^\n])([「『【〔〈《])/g;
-    text = text.replace(openDialogue, '$1\n$2');
-
-    // セリフ終了記号の後に改行を入れる
-    const closeDialogue = /([」』】〕〉》])([^\n」』】〕〉》。、！？!?…―])/g;
-    text = text.replace(closeDialogue, '$1\n$2');
-
-    // 。の後ろに続く文字があれば改行（ただし閉じ括弧や句読点は除く）
-    text = text.replace(/([。！？])([^\n」』】〕〉》！？。、…―])/g, '$1\n$2');
-
-    // 先頭の字下げを追加（セリフ以外の行）
-    const lines = text.split('\n');
-    const result = lines.map(line => {
-      const trimmed = line.trim();
-      if (!trimmed) return '';
-      // セリフ行はそのまま
-      if (/^[「『【〔〈《]/.test(trimmed)) return trimmed;
-      // それ以外は一字下げ
-      return '　' + trimmed;
-    });
-
-    return result.filter((l, i) => !(l === '' && result[i-1] === '')).join('\n');
-  }
-
-    extractBtn.addEventListener('click', async () => {
+  extractBtn.addEventListener('click', async () => {
     if (!currentFile) return;
 
     extractBtn.disabled = true;
@@ -587,11 +555,25 @@
 
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        // テキストをそのまま結合（スペースなし）
-        let pageText = content.items.map(item => item.str).join('');
-
-        // 段落・セリフの改行を復元
-        pageText = restoreParagraphs(pageText);
+        // アイテム間のスペース挿入を制御しながら結合
+        let pageText = '';
+        for (let j = 0; j < content.items.length; j++) {
+          const item = content.items[j];
+          const str = item.str;
+          if (!str) continue;
+          if (j === 0) { pageText += str; continue; }
+          const prev = content.items[j - 1].str;
+          const lastChar = prev.slice(-1);
+          const firstChar = str[0];
+          // 前後どちらかがASCII英数字ならスペースを入れる、それ以外は入れない
+          const needSpace = /[a-zA-Z0-9]/.test(lastChar) || /[a-zA-Z0-9]/.test(firstChar);
+          pageText += (needSpace ? ' ' : '') + str;
+        }
+        // 残った余分スペースを除去（全角文字の間）
+        // \u0000-\u007F = ASCII範囲外 = 日本語・韓国語等
+        pageText = pageText
+          .replace(/([\u0080-\uFFFF]) ([\u0080-\uFFFF])/g, '$1$2')
+          .replace(/([\u0080-\uFFFF]) ([\u0080-\uFFFF])/g, '$1$2');
 
         if (optTrimLines) {
           pageText = pageText.replace(/\n{3,}/g, '\n\n').trim();
