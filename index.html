@@ -617,7 +617,7 @@
   //        それ以外（句点・別の「・文末など）→ 独立会話文 → 改行
   function formatDialogue(text) {
     // Step1: 独立「〜」の前後に改行挿入
-    text = text.replace(/「([^」]*)」/g, (match, inner, offset) => {
+    text = text.replace(/([「『])([^」』]*)([」』])/g, (match, open, inner, close, offset) => {
       const after = text[offset + match.length];
       const isInline = after && /[とがをはにでもやからまでのへよりてしたばかりながら]/.test(after);
       if (isInline) return match;
@@ -630,15 +630,15 @@
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
-      const isDialogue = line.startsWith('「');
+      const isDialogue = line.startsWith('「') || line.startsWith('『');
       if (isDialogue) {
         const prev = result[result.length - 1];
-        const prevIsDialogue = prev && prev.trim().startsWith('「');
+        const prevIsDialogue = prev && (prev.trim().startsWith('「') || prev.trim().startsWith('『'));
         if (result.length > 0 && prev !== '' && !prevIsDialogue) result.push('');
         result.push(line);
         const next = lines[i + 1];
         const nextTrimmed = next && next.trim();
-        const nextIsDialogue = nextTrimmed && nextTrimmed.startsWith('「');
+        const nextIsDialogue = nextTrimmed && (nextTrimmed.startsWith('「') || nextTrimmed.startsWith('『'));
         if (nextTrimmed && !nextIsDialogue) result.push('');
       } else {
         result.push(line);
