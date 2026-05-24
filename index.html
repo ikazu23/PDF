@@ -612,30 +612,34 @@
   });
 
   // 会話文の前後に改行・空行を挿入
-  // 判定基準：行が「で始まる → 会話文行、それ以外は地の文（混在行はそのまま）
+  // Step1: 独立会話文「〜」の前後に改行を入れる（地の文中のものは除外）
+  // 判定：「〜」の直後が助詞系 → 地の文中 → そのまま
+  //        それ以外（句点・別の「・文末など）→ 独立会話文 → 改行
   function formatDialogue(text) {
+    // Step1: 独立「〜」の前後に改行挿入
+    text = text.replace(/「([^」]*)」/g, (match, inner, offset) => {
+      const after = text[offset + match.length];
+      const isInline = after && /[とがをはにでもやからまでのへよりてしたばかりながら]/.test(after);
+      if (isInline) return match;
+      return '\n' + match + '\n';
+    });
+
+    // Step2: 行頭「の前後に空行を挿入（会話文連続は改行のみ）
     const lines = text.split('\n');
     const result = [];
-
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const trimmed = line.trim();
-      const isDialogue = trimmed.startsWith('「');
-
+      const line = lines[i].trim();
+      if (!line) continue;
+      const isDialogue = line.startsWith('「');
       if (isDialogue) {
-        const prevLine = result.length > 0 ? result[result.length - 1] : '';
-        const prevIsDialogue = prevLine.trim().startsWith('「');
-        // 直前が会話文でなければ空行を挿入
-        if (result.length > 0 && prevLine !== '' && !prevIsDialogue) {
-          result.push('');
-        }
-        result.push(trimmed);
-        // 次の行が会話文でなく空でもなければ空行を後挿入
-        const nextLine = lines[i + 1];
-        const nextIsDialogue = nextLine !== undefined && nextLine.trim().startsWith('「');
-        if (nextLine !== undefined && nextLine.trim() !== '' && !nextIsDialogue) {
-          result.push('');
-        }
+        const prev = result[result.length - 1];
+        const prevIsDialogue = prev && prev.trim().startsWith('「');
+        if (result.length > 0 && prev !== '' && !prevIsDialogue) result.push('');
+        result.push(line);
+        const next = lines[i + 1];
+        const nextTrimmed = next && next.trim();
+        const nextIsDialogue = nextTrimmed && nextTrimmed.startsWith('「');
+        if (nextTrimmed && !nextIsDialogue) result.push('');
       } else {
         result.push(line);
       }
