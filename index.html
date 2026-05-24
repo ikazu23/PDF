@@ -593,6 +593,8 @@
       progressWrap.classList.remove('visible');
       progressFill.style.width = '0%';
 
+      fullText = formatDialogue(fullText);
+
       const charCount = fullText.replace(/\s/g, '').length;
       const lineCount = fullText.split('\n').length;
 
@@ -608,6 +610,92 @@
 
     extractBtn.disabled = false;
   });
+
+  // 会話文の前後に改行・空行を挿入
+  function formatDialogue(text) {
+    // まず行に分割して処理
+    const lines = text.split('\n');
+    const result = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      // 「」を含む会話行かどうか判定
+      // 行全体が会話文（「で始まるか、会話文を含む行）
+      const hasDialogue = /「[^」]*」/.test(trimmed);
+
+      if (hasDialogue) {
+        // 会話文を含む行を「」単位で分割して整形
+        // 地の文と会話文が混在している場合も対応
+        const formatted = formatLineWithDialogue(trimmed);
+        // 前の行が空でなく、かつ前の行が会話文でなければ空行を挿入
+        const prevLine = result.length > 0 ? result[result.length - 1] : '';
+        const prevIsDialogue = /^「[^」]*」/.test(prevLine.trim());
+        if (result.length > 0 && prevLine !== '' && !prevIsDialogue) {
+          result.push('');
+        }
+        result.push(...formatted);
+        // 次の行が会話文でなく、かつ空でなければ空行を後挿入
+        const nextLine = lines[i + 1];
+        const nextIsDialogue = nextLine !== undefined && /「[^」]*」/.test(nextLine.trim());
+        if (nextLine !== undefined && nextLine.trim() !== '' && !nextIsDialogue) {
+          result.push('');
+        }
+      } else {
+        result.push(line);
+      }
+    }
+
+    // 連続する空行を最大2行に圧縮
+    return result.join('\n').replace(/\n{3,}/g, '\n\n');
+  }
+
+  // 1行の中に地の文と会話文が混在する場合を整形
+  function formatLineWithDialogue(line) {
+    const parts = [];
+    // 「〜」を境界に分割（会話文と地の文を交互に取り出す）
+    const regex = /(「[^」]*」)/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(line)) !== null) {
+      const before = line.slice(lastIndex, match.index).trim();
+      if (before) parts.push(before);
+      parts.push(match[1]);
+      lastIndex = regex.lastIndex;
+    }
+
+    const after = line.slice(lastIndex).trim();
+    if (after) parts.push(after);
+
+    // 各パートを独立した行に（会話文の前後には空行）
+    const result = [];
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      const isDialogue = /^「[^」]*」$/.test(part);
+
+      if (isDialogue) {
+        const prevResult = result.length > 0 ? result[result.length - 1] : '';
+        const prevIsDialogue = /^「[^」]*」$/.test(prevResult.trim());
+        // 直前が会話文でなければ空行を挿入
+        if (result.length > 0 && prevResult !== '' && !prevIsDialogue) {
+          result.push('');
+        }
+        result.push(part);
+        // 次のパートが会話文でなければ空行を後挿入
+        const nextPart = parts[i + 1];
+        const nextIsDialogue = nextPart !== undefined && /^「[^」]*」$/.test(nextPart.trim());
+        if (nextPart !== undefined && !nextIsDialogue) {
+          result.push('');
+        }
+      } else {
+        result.push(part);
+      }
+    }
+
+    return result;
+  }
 
   // コピー
   function copyOutput() {
