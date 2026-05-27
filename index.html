@@ -616,10 +616,13 @@
   // 判定：「〜」の直後が助詞系 → 地の文中 → そのまま
   //        それ以外（句点・別の「・文末など）→ 独立会話文 → 改行
   function formatDialogue(text) {
+    // Step0: ─連続＋直後の数字テキストを除去（行内埋め込みにも対応）
+    text = text.replace(/─{4,}/g, '');
+
     // Step1: 独立「〜」の前後に改行挿入
     text = text.replace(/([「『])([^」』]*)([」』])/g, (match, open, inner, close, offset) => {
       const after = text[offset + match.length];
-      const isInline = after && /[とがをはにでもやからまでのへよりてしたばかりながら]/.test(after);
+      const isInline = after && (/[とがをはにでもやからまでのへよりてしたばかりながら]/.test(after) || text.slice(offset + match.length, offset + match.length + 3) === 'チーム');
       if (isInline) return match;
       return '\n' + match + '\n';
     });
