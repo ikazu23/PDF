@@ -369,6 +369,123 @@
     margin: 32px 0;
   }
 
+  /* 単語変換テーブル */
+  .word-conv-section {
+    margin-top: 28px;
+    border: 1px solid rgba(201,146,42,0.35);
+    border-radius: 2px;
+    background: var(--aged);
+    overflow: hidden;
+  }
+
+  .word-conv-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    background: rgba(201,146,42,0.12);
+    border-bottom: 1px solid rgba(201,146,42,0.25);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .word-conv-header-title {
+    font-size: 0.82rem;
+    letter-spacing: 0.1em;
+    color: var(--rust);
+    font-weight: 600;
+  }
+
+  .word-conv-toggle-icon {
+    font-size: 0.75rem;
+    color: var(--gold);
+    transition: transform 0.2s;
+  }
+
+  .word-conv-toggle-icon.open { transform: rotate(180deg); }
+
+  .word-conv-body {
+    display: none;
+    padding: 14px 16px;
+  }
+
+  .word-conv-body.open { display: block; }
+
+  .word-conv-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    font-family: 'DM Mono', monospace;
+    margin-bottom: 10px;
+  }
+
+  .word-conv-table th {
+    text-align: left;
+    padding: 4px 8px;
+    color: var(--gold);
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid rgba(201,146,42,0.25);
+  }
+
+  .word-conv-table td {
+    padding: 3px 4px;
+  }
+
+  .word-conv-table input {
+    width: 100%;
+    padding: 5px 8px;
+    background: var(--paper);
+    border: 1px solid transparent;
+    border-radius: 2px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--ink);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .word-conv-table input:focus {
+    border-color: var(--gold);
+    background: #fff;
+  }
+
+  .word-conv-table .del-btn {
+    width: 28px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--gold);
+    font-size: 1rem;
+    padding: 0;
+    line-height: 1;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+  }
+
+  .word-conv-table .del-btn:hover { opacity: 1; color: var(--rust); }
+
+  .word-conv-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .word-conv-add-btn {
+    padding: 6px 14px;
+    background: transparent;
+    border: 1px solid var(--gold);
+    border-radius: 2px;
+    font-family: 'Shippori Mincho', serif;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    color: var(--ink);
+    transition: all 0.2s;
+  }
+
+  .word-conv-add-btn:hover { background: var(--gold); color: var(--paper); }
+
   /* コピー完了トースト */
   .toast {
     position: fixed;
@@ -433,6 +550,31 @@
     </label>
   </div>
 
+  <!-- 単語変換テーブル -->
+  <div class="word-conv-section">
+    <div class="word-conv-header" id="wordConvHeader">
+      <span class="word-conv-header-title">🔤 単語変換（出力後のテキストに適用）</span>
+      <span class="word-conv-toggle-icon" id="wordConvToggleIcon">▼</span>
+    </div>
+    <div class="word-conv-body" id="wordConvBody">
+      <table class="word-conv-table">
+        <thead>
+          <tr>
+            <th>変換前</th>
+            <th>変換後</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="wordConvTableBody">
+          <!-- 行はJSで動的に追加 -->
+        </tbody>
+      </table>
+      <div class="word-conv-actions">
+        <button class="word-conv-add-btn" id="wordConvAddBtn">＋ 行を追加</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 抽出ボタン -->
   <button class="extract-btn" id="extractBtn" disabled>テキストを抽出</button>
 
@@ -489,7 +631,54 @@
   const clearBtn = document.getElementById('clearBtn');
   const toast = document.getElementById('toast');
 
-  // ドロップゾーン
+  // ===== 単語変換テーブル =====
+  const wordConvHeader = document.getElementById('wordConvHeader');
+  const wordConvBody   = document.getElementById('wordConvBody');
+  const wordConvToggleIcon = document.getElementById('wordConvToggleIcon');
+  const wordConvTableBody  = document.getElementById('wordConvTableBody');
+  const wordConvAddBtn     = document.getElementById('wordConvAddBtn');
+
+  // アコーディオン開閉
+  wordConvHeader.addEventListener('click', () => {
+    const isOpen = wordConvBody.classList.toggle('open');
+    wordConvToggleIcon.classList.toggle('open', isOpen);
+  });
+
+  function addWordConvRow(from = '', to = '') {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" class="conv-from" placeholder="変換前" value="${escAttr(from)}"></td>
+      <td><input type="text" class="conv-to"   placeholder="変換後" value="${escAttr(to)}"></td>
+      <td><button class="del-btn" title="削除">×</button></td>
+    `;
+    tr.querySelector('.del-btn').addEventListener('click', () => tr.remove());
+    wordConvTableBody.appendChild(tr);
+  }
+
+  function escAttr(s) {
+    return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  wordConvAddBtn.addEventListener('click', () => addWordConvRow());
+
+  // 初期行を1行追加
+  addWordConvRow();
+
+  // 単語変換を出力テキストに適用
+  function applyWordConversions(text) {
+    const rows = wordConvTableBody.querySelectorAll('tr');
+    for (const row of rows) {
+      const from = row.querySelector('.conv-from').value;
+      const to   = row.querySelector('.conv-to').value;
+      if (!from) continue;
+      // 正規表現の特殊文字をエスケープして全置換
+      const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      text = text.replace(new RegExp(escaped, 'g'), to);
+    }
+    return text;
+  }
+
+  // ===== 既存ロジック =====
   dropZone.addEventListener('click', () => fileInput.click());
 
   dropZone.addEventListener('dragover', e => {
@@ -593,6 +782,7 @@
       progressWrap.classList.remove('visible');
       progressFill.style.width = '0%';
 
+      fullText = applyWordConversions(fullText);
       fullText = formatDialogue(fullText);
 
       const charCount = fullText.replace(/\s/g, '').length;
